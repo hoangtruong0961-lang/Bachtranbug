@@ -24,32 +24,32 @@ try {
 const NGHI_TTS_VOICE_URLS: Record<string, { filename: string; url: string; name: string }> = {
   lacphi: {
     filename: 'lacphi.onnx',
-    url: 'https://huggingface.co/doof-ferb/nghitts-copy/resolve/main/sherpa-onnx/lacphi.onnx',
+    url: 'https://huggingface.co/doof-ferb/nghitts-copy/resolve/main/sherpa-onnx/lacphi.onnx?download=true',
     name: 'Lạc Phi',
   },
   duyoryx: {
     filename: 'duyoryx3175.onnx',
-    url: 'https://huggingface.co/doof-ferb/nghitts-copy/resolve/main/sherpa-onnx/duyoryx3175.onnx',
+    url: 'https://huggingface.co/doof-ferb/nghitts-copy/resolve/main/sherpa-onnx/duyoryx3175.onnx?download=true',
     name: 'Duy Oryx',
   },
   ngochuyennew: {
     filename: 'ngochuyennew.onnx',
-    url: 'https://huggingface.co/doof-ferb/nghitts-copy/resolve/main/sherpa-onnx/ngochuyennew.onnx',
+    url: 'https://huggingface.co/doof-ferb/nghitts-copy/resolve/main/sherpa-onnx/ngochuyennew.onnx?download=true',
     name: 'Ngọc Huyền (Mới)',
   },
   ngocngan: {
     filename: 'ngocngan3701.onnx',
-    url: 'https://huggingface.co/doof-ferb/nghitts-copy/resolve/main/sherpa-onnx/ngocngan3701.onnx',
+    url: 'https://huggingface.co/doof-ferb/nghitts-copy/resolve/main/sherpa-onnx/ngocngan3701.onnx?download=true',
     name: 'Ngọc Ngạn',
   },
   maiphuong: {
     filename: 'maiphuong.onnx',
-    url: 'https://huggingface.co/doof-ferb/nghitts-copy/resolve/main/sherpa-onnx/maiphuong.onnx',
+    url: 'https://huggingface.co/doof-ferb/nghitts-copy/resolve/main/sherpa-onnx/maiphuong.onnx?download=true',
     name: 'Mai Phương',
   },
   minhquang: {
     filename: 'minhquang.onnx',
-    url: 'https://huggingface.co/doof-ferb/nghitts-copy/resolve/main/sherpa-onnx/minhquang.onnx',
+    url: 'https://huggingface.co/doof-ferb/nghitts-copy/resolve/main/sherpa-onnx/minhquang.onnx?download=true',
     name: 'Minh Quang',
   },
 };
@@ -647,6 +647,7 @@ ${JSON.stringify(subtitles.map((s: any) => ({ id: s.id, originalText: s.original
       // Reset any previous failed status or cached instance so new model configuration is loaded cleanly
       failedSherpaVoices.delete(nghiVoiceKey);
       disposeTtsInstance(nghiVoiceKey);
+      clearTtsAudioCache();
 
       const sizeMb = Math.round((fs.statSync(modelPath).size / (1024 * 1024)) * 10) / 10;
 
@@ -690,6 +691,9 @@ ${JSON.stringify(subtitles.map((s: any) => ({ id: s.id, originalText: s.original
   };
 
   const getCachedAudio = (key: string): CachedAudioItem | undefined => cachedTtsAudio.get(key);
+  const clearTtsAudioCache = () => {
+    cachedTtsAudio.clear();
+  };
   const setCachedAudio = (key: string, item: CachedAudioItem) => {
     if (cachedTtsAudio.size >= MAX_AUDIO_CACHE_SIZE) {
       const firstKey = cachedTtsAudio.keys().next().value;
@@ -1034,11 +1038,8 @@ ${JSON.stringify(subtitles.map((s: any) => ({ id: s.id, originalText: s.original
     // Option A: Nghi TTS Sherpa-ONNX
     if (provider === 'nghi_tts') {
       if (failedSherpaVoices.has(nghiVoice)) {
-        actualProvider = 'nghi_tts_gtranslate_fallback';
-        const fallbackBuf = await fetchGoogleTranslateTTS(cleanText);
-        if (fallbackBuf && fallbackBuf.length > 200) {
-          base64Audio = fallbackBuf.toString('base64');
-        }
+        console.warn(`[Nghi-TTS] Voice '${nghiVoice}' failed or needs re-download. No fallback to Google Translate.`);
+        base64Audio = null;
       } else {
         const voiceConfig = NGHI_TTS_VOICE_URLS[nghiVoice] || NGHI_TTS_VOICE_URLS.lacphi;
         const nghiDir = path.join(process.cwd(), 'nghi-tts audio');
@@ -1047,6 +1048,12 @@ ${JSON.stringify(subtitles.map((s: any) => ({ id: s.id, originalText: s.original
         const dataDir = path.join(nghiDir, 'espeak-ng-data');
         const tokensUrl = 'https://huggingface.co/doof-ferb/nghitts-copy/resolve/main/sherpa-onnx/tokens.txt';
 
+        // Relative paths for WASM Emscripten file system compatibility
+        const relNghiDir = 'nghi-tts audio';
+        const relModelPath = path.join(relNghiDir, voiceConfig.filename);
+        const relTokensPath = path.join(relNghiDir, 'tokens.txt');
+        const relDataDir = path.join(relNghiDir, 'espeak-ng-data');
+
         try {
           const tokensOk = await ensureFileDownloaded(tokensUrl, tokensPath);
           const espeakOk = await ensureEspeakData(nghiDir);
@@ -1054,7 +1061,7 @@ ${JSON.stringify(subtitles.map((s: any) => ({ id: s.id, originalText: s.original
 
           if (tokensOk && espeakOk && modelOk && sherpaOnnxModule) {
             try {
-              const sherpaRes = generateSherpaAudioSafe(nghiVoice, modelPath, tokensPath, dataDir, cleanText, speed);
+              const sherpaRes = generateSherpaAudioSafe(nghiVoice, relModelPath, relTokensPath, relDataDir, cleanText, speed);
               if (sherpaRes) {
                 audioBuffer = sherpaRes.buffer;
                 audioDuration = sherpaRes.duration;
@@ -1073,11 +1080,8 @@ ${JSON.stringify(subtitles.map((s: any) => ({ id: s.id, originalText: s.original
         if (audioBuffer && audioBuffer.length > 200) {
           base64Audio = audioBuffer.toString('base64');
         } else {
-          actualProvider = 'nghi_tts_gtranslate_fallback';
-          const fallbackBuf = await fetchGoogleTranslateTTS(cleanText);
-          if (fallbackBuf && fallbackBuf.length > 200) {
-            base64Audio = fallbackBuf.toString('base64');
-          }
+          console.warn(`[Nghi-TTS] Could not generate audio for '${nghiVoice}'. No fallback to Google Translate.`);
+          base64Audio = null;
         }
       }
     }
@@ -1220,8 +1224,8 @@ ${JSON.stringify(subtitles.map((s: any) => ({ id: s.id, originalText: s.original
       }
     }
 
-    // Global Catch-all Fallback
-    if (!base64Audio) {
+    // Global Catch-all Fallback (Disabled for nghi_tts)
+    if (!base64Audio && provider !== 'nghi_tts') {
       actualProvider = 'global_gtranslate_fallback';
       const fallbackBuf = await fetchGoogleTranslateTTS(cleanText);
       if (fallbackBuf && fallbackBuf.length > 200) {
@@ -1229,7 +1233,7 @@ ${JSON.stringify(subtitles.map((s: any) => ({ id: s.id, originalText: s.original
       }
     }
 
-    if (base64Audio) {
+    if (base64Audio && !actualProvider.includes('fallback')) {
       setCachedAudio(cacheKey, {
         audioBase64: base64Audio,
         duration: audioDuration,
@@ -1271,6 +1275,11 @@ ${JSON.stringify(subtitles.map((s: any) => ({ id: s.id, originalText: s.original
           audioBase64: result.audioBase64,
           duration: result.duration,
           timestamps: result.timestamps,
+        });
+      } else if (req.body.provider === 'nghi_tts') {
+        res.json({
+          success: false,
+          error: 'Giọng đọc Nghi-TTS chưa được tải về. Vui lòng bấm chọn lại giọng để tải về.',
         });
       } else {
         res.status(500).json({ success: false, error: 'Không thể tạo âm thanh TTS' });

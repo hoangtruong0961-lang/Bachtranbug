@@ -807,12 +807,14 @@ export const CapCutEditorView: React.FC<CapCutEditorViewProps> = ({
       if (ttsPipelineIdRef.current !== currentPipelineId) return;
       if (b64) {
         await playBase64AudioWithControls(b64, speed, pitch);
-      } else {
+      } else if (provider !== 'nghi_tts') {
         const utterance = new SpeechSynthesisUtterance(chunks[0]);
         utterance.rate = Math.max(0.5, Math.min(2.0, speed));
         utterance.pitch = Math.max(0.5, Math.min(1.5, 1 + pitch / 10));
         utterance.lang = 'vi-VN';
         window.speechSynthesis.speak(utterance);
+      } else {
+        console.warn('[Nghi-TTS] Audio not ready or voice model needs to be downloaded.');
       }
       return;
     }
@@ -883,7 +885,7 @@ export const CapCutEditorView: React.FC<CapCutEditorViewProps> = ({
           source.start(0);
           activeAudioSourceRef.current = source;
         });
-      } else {
+      } else if (provider !== 'nghi_tts') {
         // SpeechSynthesis Fallback for chunk
         await new Promise<void>((resolve) => {
           if (ttsPipelineIdRef.current !== currentPipelineId) {

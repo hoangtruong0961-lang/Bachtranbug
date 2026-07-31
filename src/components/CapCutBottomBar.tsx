@@ -141,7 +141,7 @@ export const CapCutBottomBar: React.FC<CapCutBottomBarProps> = ({
   const [isDownloadingNghi, setIsDownloadingNghi] = useState(false);
   const [downloadMsg, setDownloadMsg] = useState('');
 
-  const checkNghiStatus = async (voiceKey: string) => {
+  const checkNghiStatus = async (voiceKey: string, autoDownloadIfMissing = false) => {
     try {
       const res = await fetch('/api/tts/nghi-status', {
         method: 'POST',
@@ -151,6 +151,9 @@ export const CapCutBottomBar: React.FC<CapCutBottomBarProps> = ({
       const data = await res.json();
       if (data.success) {
         setNghiStatus(data);
+        if (autoDownloadIfMissing && !data.downloadedVoices?.includes(voiceKey)) {
+          handleDownloadNghiModel(voiceKey);
+        }
       }
     } catch (e) {
       console.warn('Check Nghi status error:', e);
@@ -158,8 +161,18 @@ export const CapCutBottomBar: React.FC<CapCutBottomBarProps> = ({
   };
 
   const handleDownloadNghiModel = async (voiceKey: string) => {
+    const voiceNameMap: Record<string, string> = {
+      ngochuyennew: 'Ngọc Huyền',
+      lacphi: 'Lạc Phi',
+      duyoryx: 'Duy Oryx',
+      ngocngan: 'Ngọc Ngạn',
+      maiphuong: 'Mai Phương',
+      minhquang: 'Minh Quang',
+    };
+    const voiceName = voiceNameMap[voiceKey] || voiceKey;
+
     setIsDownloadingNghi(true);
-    setDownloadMsg(`⏳ Đang tải mô hình ONNX & thư viện Sherpa cho giọng ${voiceKey}... Vui lòng đợi trong giây lát!`);
+    setDownloadMsg(`⏳ Đang tải về mô hình giọng đọc ${voiceName}... Vui lòng đợi trong giây lát!`);
     try {
       const res = await fetch('/api/tts/nghi-download', {
         method: 'POST',
@@ -168,7 +181,7 @@ export const CapCutBottomBar: React.FC<CapCutBottomBarProps> = ({
       });
       const data = await res.json();
       if (data.success) {
-        setDownloadMsg(`✓ ${data.message}`);
+        setDownloadMsg(`✓ Đã tải xong giọng đọc ${voiceName}!`);
         await checkNghiStatus(voiceKey);
       } else {
         setDownloadMsg(`❌ Lỗi tải: ${data.error}`);
@@ -182,7 +195,7 @@ export const CapCutBottomBar: React.FC<CapCutBottomBarProps> = ({
 
   React.useEffect(() => {
     if (selectedTtsProvider === 'nghi_tts') {
-      checkNghiStatus(appSettings.nghiVoice || 'lacphi');
+      checkNghiStatus(appSettings.nghiVoice || 'lacphi', true);
     }
   }, [selectedTtsProvider, appSettings.nghiVoice]);
 
@@ -697,7 +710,7 @@ export const CapCutBottomBar: React.FC<CapCutBottomBarProps> = ({
                         onChange={(e) => {
                           const v = e.target.value;
                           onSaveSettings({ ...appSettings, nghiVoice: v });
-                          checkNghiStatus(v);
+                          checkNghiStatus(v, true);
                         }}
                         className="w-full bg-transparent text-sm font-semibold text-white focus:outline-none cursor-pointer appearance-none pr-7"
                       >
@@ -712,7 +725,7 @@ export const CapCutBottomBar: React.FC<CapCutBottomBarProps> = ({
                           const isDownloaded = nghiStatus?.downloadedVoices?.includes(v.id);
                           return (
                             <option key={v.id} value={v.id} className="bg-[#1e1e24] text-white">
-                              {isDownloaded ? `✓ ${v.name} (Đã xác nhận)` : `✕ ${v.name} (Chưa tải)`}
+                              {isDownloaded ? `✓ ${v.name} (Đã sẵn sàng)` : `⏳ ${v.name} (Chưa tải - Chọn để tải)`}
                             </option>
                           );
                         })}
@@ -761,19 +774,28 @@ export const CapCutBottomBar: React.FC<CapCutBottomBarProps> = ({
 
                     <ChevronDown className="w-4 h-4 text-zinc-400 absolute right-3.5 bottom-3.5 pointer-events-none" />
 
-                    {/* Active Voice Status Indicator Badge */}
+                    {/* Active Voice Status Indicator Badge & Download Loading */}
                     {selectedTtsProvider === 'nghi_tts' && (
-                      <div className="mt-2 flex items-center space-x-2">
-                        {nghiStatus?.downloadedVoices?.includes(appSettings.nghiVoice || 'lacphi') ? (
-                          <div className="flex items-center space-x-1.5 text-xs font-semibold text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 px-3 py-1 rounded-xl">
-                            <Check className="w-3.5 h-3.5 text-emerald-400 font-bold" />
-                            <span>Đã xác nhận (Đã tải giọng này)</span>
+                      <div className="mt-2.5">
+                        {isDownloadingNghi ? (
+                          <div className="flex items-center space-x-2.5 bg-sky-950/80 border border-sky-500/50 p-2.5 rounded-xl text-sky-200 text-xs font-semibold animate-pulse">
+                            <Loader2 className="w-4 h-4 animate-spin text-sky-400 shrink-0" />
+                            <span>{downloadMsg || `Đang tải về mô hình giọng đọc... Vui lòng đợi trong giây lát.`}</span>
+                          </div>
+                        ) : nghiStatus?.downloadedVoices?.includes(appSettings.nghiVoice || 'ngochuyennew') ? (
+                          <div className="flex items-center space-x-1.5 text-xs font-semibold text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 px-3 py-1.5 rounded-xl">
+                            <Check className="w-3.5 h-3.5 text-emerald-400 font-bold shrink-0" />
+                            <span>Đã sẵn sàng (Giọng đọc đã tải thành công)</span>
                           </div>
                         ) : (
-                          <div className="flex items-center space-x-1.5 text-xs font-semibold text-white bg-zinc-800 border border-zinc-600 px-3 py-1 rounded-xl">
-                            <X className="w-3.5 h-3.5 text-white font-bold bg-white/20 rounded-full p-0.5" />
-                            <span>Chưa tải giọng này (Tự động tải khi thuyết minh)</span>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadNghiModel(appSettings.nghiVoice || 'ngochuyennew')}
+                            className="w-full flex items-center justify-center space-x-2 text-xs font-semibold text-amber-300 bg-amber-950/50 hover:bg-amber-900/60 border border-amber-500/40 px-3 py-2 rounded-xl transition cursor-pointer"
+                          >
+                            <Loader2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                            <span>Giọng chưa tải — Click để tải về ngay</span>
+                          </button>
                         )}
                       </div>
                     )}
